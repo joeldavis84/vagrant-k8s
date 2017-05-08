@@ -1,2 +1,6 @@
 # vagrant-k8s
-Vagrant Project for my LFS258 class. Other methods weren't working so I'll just install with kubeadm. This project probably isn't interesting to anyone outside of myself and one or two other people who might run into the same issues. Basically minikube wasn't installing at all unless I did VirtualBox. I could either do this as a Vagrant project or try to get the KVM driver working and so I did this just to get the ball rolling on the training class.
+Vagrant Project for my LFS258 class. Other methods weren't working so I ended up using vagrant to install kubernetes so that I can continually reset to a blanke slate. 
+
+This project probably isn't interesting to anyone outside of myself and one or two other people who might run into the same issues. Right now it's VirtualBox only because I started running into weird network issues on libvirt. Eventually this project and `vagrant-galera` will be refactored so that they come up properly on both libvirt and VirtualBox.
+
+All validation was done on Fedora Linux.
