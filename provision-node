@@ -1,0 +1,71 @@
+#!/bin/bash
+
+echo "Configuring the operating system..."
+
+cat <<EOI >> /etc/hosts
+192.168.121.110 master
+192.168.121.111 node01
+192.168.121.112 node02
+192.168.121.113 node03
+EOI
+
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
+
+setenforce 0
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+systemctl disable iptables-services firewalld >/dev/null 2>&1
+systemctl stop iptables-services firewalld >/dev/null 2>&1
+
+cat <<EOI > /etc/yum.repos.d/virt7-docker-common-release.repo
+[virt7-docker-common-release]
+name=virt7-docker-common-release
+baseurl=http://cbs.centos.org/repos/virt7-docker-common-release/x86_64/os/
+gpgcheck=0
+EOI
+
+echo "Installing Kubernetes Client Programs (this may take a bit..."
+yum -y install --enablerepo=virt7-docker-common-release kubernetes etcd flannel >/tmp/software-installation.log 2>&1
+
+cat /vagrant/config > /etc/kubernetes/config 
+
+cat <<EOI > /etc/kubernetes/kubelet
+# The address for the info server to serve on
+KUBELET_ADDRESS="--address=0.0.0.0"
+
+# The port for the info server to serve on
+KUBELET_PORT="--port=10250"
+
+# You may leave this blank to use the actual hostname
+# Check the node number!
+KUBELET_HOSTNAME="--hostname-override=$(hostname -s)"
+
+# Location of the api-server
+KUBELET_API_SERVER="--api-servers=http://master:8080"
+
+# Add your own!
+KUBELET_ARGS=""
+EOI
+
+cat <<EOI > /etc/sysconfig/flanneld
+# Flanneld configuration options
+
+# etcd url location.  Point this to the server where etcd runs
+FLANNEL_ETCD_ENDPOINTS="http://master:2379"
+
+# etcd config key.  This is the configuration key that flannel queries
+# For address range assignment
+FLANNEL_ETCD_PREFIX="/kube-centos/network"
+
+# Any additional options that you want to pass
+#FLANNEL_OPTIONS=""
+EOI
+
+for SERVICES in kube-proxy kubelet flanneld docker; do
+    systemctl restart $SERVICES 2>/dev/null
+    systemctl enable $SERVICES 2>/dev/null
+done
+
+kubectl config set-cluster default-cluster --server=http://master:8080
+kubectl config set-context default-context --cluster=default-cluster --user=default-admin
+kubectl config use-context default-context

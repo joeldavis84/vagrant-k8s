@@ -1,0 +1,77 @@
+#!/bin/bash
+
+echo "Configuring Operating system..."
+cat <<EOI > /etc/yum.repos.d/virt7-docker-common-release.repo
+[virt7-docker-common-release]
+name=virt7-docker-common-release
+baseurl=http://cbs.centos.org/repos/virt7-docker-common-release/x86_64/os/
+gpgcheck=0
+EOI
+
+cat <<EOI >> /etc/hosts
+192.168.121.110 master
+192.168.121.111 node01
+192.168.121.112 node02
+192.168.121.113 node03
+EOI
+
+  ## I've had issues when CentOS tries to use IPv6
+sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null
+sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null
+
+setenforce 0
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+systemctl disable iptables-services firewalld >/dev/null 2>&1
+systemctl stop iptables-services firewalld >/dev/null 2>&1
+
+echo "Installing Kubernetes API server software (this may take a bit)..."
+yum install -y --enablerepo=virt7-docker-common-release kubernetes etcd flannel >/tmp/software-install.log 2>&1
+
+echo "Establishing API Server Configuration"
+cat /vagrant/etcd.conf > /etc/etcd/etcd.conf
+cat /vagrant/config > /etc/kubernetes/config 
+
+cat <<EOI > /etc/kubernetes/apiserver
+# The address on the local server to listen to.
+KUBE_API_ADDRESS="--address=0.0.0.0"
+
+# The port on the local server to listen on.
+KUBE_API_PORT="--port=8080"
+
+# Port kubelets listen on
+KUBELET_PORT="--kubelet-port=10250"
+
+# Comma separated list of nodes in the etcd cluster
+KUBE_ETCD_SERVERS="--etcd-servers=http://master:2379"
+
+# Address range to use for services
+KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range=10.254.0.0/16"
+
+# Add your own!
+KUBE_API_ARGS=""
+EOI
+
+echo ":: Bootstrapping etcd and flannel..."
+systemctl start etcd 2>/dev/null
+etcdctl mkdir /kube-centos/network
+etcdctl mk /kube-centos/network/config "{ \"Network\": \"172.30.0.0/16\", \"SubnetLen\": 24, \"Backend\": { \"Type\": \"vxlan\" } }"
+
+cat <<EOI > /etc/sysconfig/flanneld
+# Flanneld configuration options
+
+# etcd url location.  Point this to the server where etcd runs
+FLANNEL_ETCD_ENDPOINTS="http://master:2379"
+
+# etcd config key.  This is the configuration key that flannel queries
+# For address range assignment
+FLANNEL_ETCD_PREFIX="/kube-centos/network"
+
+# Any additional options that you want to pass
+#FLANNEL_OPTIONS=""
+EOI
+
+for SERVICES in etcd kube-apiserver kube-controller-manager kube-scheduler flanneld; do
+    systemctl restart $SERVICES 
+    systemctl enable $SERVICES 2>/dev/null
+done
+
