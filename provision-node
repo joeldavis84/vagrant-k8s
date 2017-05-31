@@ -24,6 +24,8 @@ baseurl=http://cbs.centos.org/repos/virt7-docker-common-release/x86_64/os/
 gpgcheck=0
 EOI
 
+echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+
 echo "Installing Kubernetes Client Programs (this may take a bit..."
 yum -y install --enablerepo=virt7-docker-common-release kubernetes etcd flannel >/tmp/software-installation.log 2>&1
 
